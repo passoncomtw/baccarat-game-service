@@ -3,127 +3,145 @@ package main
 import (
 	"fmt"
 	"math/rand"
-	"time"
+	"slices"
 )
 
-var m_CardNum = 416
-var m_CardSize = 52
-
-var m_AllCards []int
-var m_CopyCards []int
-var m_First_Card int
-var m_RedCardPos int
-var m_PlayerCard []int
-var m_BankerCard []int
-var m_PlayerPoint int
-var m_BankerPoint int
-var m_RedCardFlag bool
-
-var m_kCardPoint = [52]int{
-	1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0,
-	1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0,
-	1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0,
-	1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0}
-
-var m_kPoint = [19]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8}
-
-var m_kBankThird = [10][10]bool{
-	{true, true, true, true, true, true, true, true, true, true},
-	{true, true, true, true, true, true, true, true, true, true},
-	{true, true, true, true, true, true, true, true, true, true},
-	{true, true, true, true, true, true, true, true, false, true},
-	{false, false, true, true, true, true, true, true, false, false},
-	{false, false, false, false, false, false, true, true, false, false},
-	{false, false, false, false, false, false, true, true, false, false},
-	{false, false, false, false, false, false, false, false, false, false},
-	{false, false, false, false, false, false, false, false, false, false},
-	{false, false, false, false, false, false, false, false, false, false},
+func removeCard(cardSource []Card, index int) []Card {
+	cardSource[index] = cardSource[len(cardSource)-1]
+	return cardSource[:len(cardSource)-1]
 }
 
-func remove(s []int, i int) []int {
-	s[i] = s[len(s)-1]
-	return s[:len(s)-1]
+func drawCard(cardSource []Card) (Card, []Card) {
+	index := rand.Intn(len(cardSource))
+	card := cardSource[index]
+	nextCardSource := removeCard(cardSource, index)
+	return card, nextCardSource
 }
 
-func GetMin(x int, y int) int {
-	if x > y {
-		return y
+func dealBothCards(cardSource []Card, bankerResult []Card, playerResult []Card) ([]Card, []Card, []Card) {
+	playerCard, afterDrawPlayerCards := drawCard(cardSource)
+	bankerCard, afterDrawBankerCards := drawCard(afterDrawPlayerCards)
+	nextBankerResult := append(bankerResult, bankerCard)
+	nextPlayerResult := append(playerResult, playerCard)
+
+	return afterDrawBankerCards, nextBankerResult, nextPlayerResult
+}
+
+func dealBankerCards(cardSource []Card, bankerResult []Card) ([]Card, []Card) {
+	bankerCard, afterDrawBankerCards := drawCard(cardSource)
+	nextBankerResult := append(bankerResult, bankerCard)
+
+	return afterDrawBankerCards, nextBankerResult
+}
+
+func dealPlayerCards(cardSource []Card, playerResult []Card) ([]Card, []Card) {
+	bankerCard, afterDrawBankerCards := drawCard(cardSource)
+	nextPlayerResult := append(playerResult, bankerCard)
+
+	return afterDrawBankerCards, nextPlayerResult
+}
+
+func initialBothCards(cardSource []Card, bankerResult []Card, playerResult []Card) ([]Card, []Card, []Card) {
+	after1RoundCards, after1RoundBankerResult, after1RoundPlayerResult := dealBothCards(cardSource, bankerResult, playerResult)
+	return dealBothCards(after1RoundCards, after1RoundBankerResult, after1RoundPlayerResult)
+}
+
+func finalDealPlayerCard(cardSource []Card, playerResult []Card) ([]Card, []Card) {
+	playerCount := playerResult[0].count + playerResult[1].count
+
+	if playerCount < 6 {
+		return dealPlayerCards(cardSource, playerResult)
 	}
-	return x
+	return cardSource, playerResult
 }
 
-func GetCard() (card int) {
-	rand.Seed(time.Now().UnixNano())
-
-	value := rand.Intn(len(m_AllCards))
-	m_AllCards = remove(m_AllCards, value)
-	card = value % 52
-	return card
-}
-
-func LoadRemainCards() {
-	m_AllCards = m_CopyCards
-}
-
-func DoRoundThrowCard() {
-	LoadRemainCards()
-	card := GetCard()
-	m_First_Card = card
-	num := GetMin(card%13, 9) + 1
-	for i := 0; i < num; i++ {
-		GetCard()
-	}
-}
-
-func BacResultSingleGame() {
-	m_RedCardPos = -1
-	m_PlayerCard = nil
-	m_BankerCard = nil
-
-	for i := 0; i < 2; i++ {
-		m_PlayerCard = append(m_PlayerCard, GetCard())
-		m_BankerCard = append(m_BankerCard, GetCard())
+func finalDealBankerCard(cardSource []Card, bankerResult []Card, playerResult []Card) ([]Card, []Card) {
+	if len(playerResult) == 2 {
+		return cardSource, bankerResult
 	}
 
-	m_PlayerPoint = m_kCardPoint[m_PlayerCard[0]] + m_kCardPoint[m_PlayerCard[1]]
-	m_PlayerPoint = m_kPoint[m_PlayerPoint]
+	bankerCount := bankerResult[0].count + bankerResult[1].count
+	playerThirdCard := playerResult[2]
 
-	m_BankerPoint = m_kCardPoint[m_BankerCard[0]] + m_kCardPoint[m_BankerCard[1]]
-	m_BankerPoint = m_kPoint[m_BankerPoint]
-
-	if !(m_PlayerPoint >= 8 || m_BankerPoint >= 8) {
-		if m_PlayerPoint <= 5 {
-			m_PlayerCard = append(m_PlayerCard, GetCard())
-
-			m_PlayerPoint += m_kCardPoint[m_PlayerCard[2]]
-			m_PlayerPoint = m_kPoint[m_PlayerPoint]
-
-			if m_kBankThird[m_BankerPoint][m_kCardPoint[m_PlayerCard[2]]] {
-				m_BankerCard = append(m_BankerCard, GetCard())
-
-				m_BankerPoint += m_kCardPoint[m_BankerCard[2]]
-				m_BankerPoint = m_kPoint[m_BankerPoint]
-			}
-		} else {
-			if m_BankerPoint <= 5 {
-				m_BankerCard = append(m_BankerCard, GetCard())
-
-				m_BankerPoint += m_kCardPoint[m_BankerCard[2]]
-				m_BankerPoint = m_kPoint[m_BankerPoint]
-			}
+	firstCondition := []int{0, 1, 2}
+	if slices.Contains(firstCondition, bankerCount) {
+		if playerThirdCard.count == 8 {
+			return cardSource, bankerResult
 		}
+		return dealBankerCards(cardSource, bankerResult)
 	}
+
+	secondCondition := []int{3, 5}
+	if slices.Contains(secondCondition, bankerCount) {
+		playerThirdCondition := []int{0, 1, 8, 9}
+		if slices.Contains(playerThirdCondition, playerThirdCard.count) {
+			return cardSource, bankerResult
+		}
+		return dealBankerCards(cardSource, bankerResult)
+	}
+
+	if bankerCount == 4 {
+		playerThirdCondition := []int{0, 1, 2, 3, 8, 9}
+		if slices.Contains(playerThirdCondition, playerThirdCard.count) {
+			return cardSource, bankerResult
+		}
+		return dealBankerCards(cardSource, bankerResult)
+	}
+
+	if bankerCount == 6 {
+		return dealBankerCards(cardSource, bankerResult)
+	}
+
+	return cardSource, bankerResult
+}
+
+type SUIT string
+
+const (
+	Spade   SUIT = "spade"
+	Heart   SUIT = "heart"
+	Diamond SUIT = "diamond"
+	Club    SUIT = "club"
+)
+
+type Card struct {
+	suit  SUIT
+	value int
+	count int
 }
 
 func main() {
-	for i := 0; i < 416; i++ {
-		m_CopyCards = append(m_CopyCards, i)
+	cardSource := []Card{
+		{suit: Spade, value: 1, count: 1}, {suit: Spade, value: 2, count: 2}, {suit: Spade, value: 3, count: 3}, {suit: Spade, value: 4, count: 4}, {suit: Spade, value: 5, count: 5}, {suit: Spade, value: 6, count: 6}, {suit: Spade, value: 7, count: 7}, {suit: Spade, value: 8, count: 8}, {suit: Spade, value: 9, count: 9}, {suit: Spade, value: 10, count: 0}, {suit: Spade, value: 11, count: 0}, {suit: Spade, value: 12, count: 0}, {suit: Spade, value: 13, count: 0},
+		{suit: Heart, value: 1, count: 1}, {suit: Heart, value: 2, count: 2}, {suit: Heart, value: 3, count: 3}, {suit: Heart, value: 4, count: 4}, {suit: Heart, value: 5, count: 5}, {suit: Heart, value: 6, count: 6}, {suit: Heart, value: 7, count: 7}, {suit: Heart, value: 8, count: 8}, {suit: Heart, value: 9, count: 9}, {suit: Heart, value: 10, count: 0}, {suit: Heart, value: 11, count: 0}, {suit: Heart, value: 12, count: 0}, {suit: Heart, value: 13, count: 0},
+		{suit: Diamond, value: 1, count: 1}, {suit: Diamond, value: 2, count: 2}, {suit: Diamond, value: 3, count: 3}, {suit: Diamond, value: 4, count: 4}, {suit: Diamond, value: 5, count: 5}, {suit: Diamond, value: 6, count: 6}, {suit: Diamond, value: 7, count: 7}, {suit: Diamond, value: 8, count: 8}, {suit: Diamond, value: 9, count: 9}, {suit: Diamond, value: 10, count: 0}, {suit: Diamond, value: 11, count: 0}, {suit: Diamond, value: 12, count: 0}, {suit: Diamond, value: 13, count: 0},
+		{suit: Club, value: 1, count: 1}, {suit: Club, value: 2, count: 2}, {suit: Club, value: 3, count: 3}, {suit: Club, value: 4, count: 4}, {suit: Club, value: 5, count: 5}, {suit: Club, value: 6, count: 6}, {suit: Club, value: 7, count: 7}, {suit: Club, value: 8, count: 8}, {suit: Club, value: 9, count: 9}, {suit: Club, value: 10, count: 0}, {suit: Club, value: 11, count: 0}, {suit: Club, value: 12, count: 0}, {suit: Club, value: 13, count: 0},
+
+		{suit: Spade, value: 1, count: 1}, {suit: Spade, value: 2, count: 2}, {suit: Spade, value: 3, count: 3}, {suit: Spade, value: 4, count: 4}, {suit: Spade, value: 5, count: 5}, {suit: Spade, value: 6, count: 6}, {suit: Spade, value: 7, count: 7}, {suit: Spade, value: 8, count: 8}, {suit: Spade, value: 9, count: 9}, {suit: Spade, value: 10, count: 0}, {suit: Spade, value: 11, count: 0}, {suit: Spade, value: 12, count: 0}, {suit: Spade, value: 13, count: 0},
+		{suit: Heart, value: 1, count: 1}, {suit: Heart, value: 2, count: 2}, {suit: Heart, value: 3, count: 3}, {suit: Heart, value: 4, count: 4}, {suit: Heart, value: 5, count: 5}, {suit: Heart, value: 6, count: 6}, {suit: Heart, value: 7, count: 7}, {suit: Heart, value: 8, count: 8}, {suit: Heart, value: 9, count: 9}, {suit: Heart, value: 10, count: 0}, {suit: Heart, value: 11, count: 0}, {suit: Heart, value: 12, count: 0}, {suit: Heart, value: 13, count: 0},
+		{suit: Diamond, value: 1, count: 1}, {suit: Diamond, value: 2, count: 2}, {suit: Diamond, value: 3, count: 3}, {suit: Diamond, value: 4, count: 4}, {suit: Diamond, value: 5, count: 5}, {suit: Diamond, value: 6, count: 6}, {suit: Diamond, value: 7, count: 7}, {suit: Diamond, value: 8, count: 8}, {suit: Diamond, value: 9, count: 9}, {suit: Diamond, value: 10, count: 0}, {suit: Diamond, value: 11, count: 0}, {suit: Diamond, value: 12, count: 0}, {suit: Diamond, value: 13, count: 0},
+		{suit: Club, value: 1, count: 1}, {suit: Club, value: 2, count: 2}, {suit: Club, value: 3, count: 3}, {suit: Club, value: 4, count: 4}, {suit: Club, value: 5, count: 5}, {suit: Club, value: 6, count: 6}, {suit: Club, value: 7, count: 7}, {suit: Club, value: 8, count: 8}, {suit: Club, value: 9, count: 9}, {suit: Club, value: 10, count: 0}, {suit: Club, value: 11, count: 0}, {suit: Club, value: 12, count: 0}, {suit: Club, value: 13, count: 0},
+
+		{suit: Spade, value: 1, count: 1}, {suit: Spade, value: 2, count: 2}, {suit: Spade, value: 3, count: 3}, {suit: Spade, value: 4, count: 4}, {suit: Spade, value: 5, count: 5}, {suit: Spade, value: 6, count: 6}, {suit: Spade, value: 7, count: 7}, {suit: Spade, value: 8, count: 8}, {suit: Spade, value: 9, count: 9}, {suit: Spade, value: 10, count: 0}, {suit: Spade, value: 11, count: 0}, {suit: Spade, value: 12, count: 0}, {suit: Spade, value: 13, count: 0},
+		{suit: Heart, value: 1, count: 1}, {suit: Heart, value: 2, count: 2}, {suit: Heart, value: 3, count: 3}, {suit: Heart, value: 4, count: 4}, {suit: Heart, value: 5, count: 5}, {suit: Heart, value: 6, count: 6}, {suit: Heart, value: 7, count: 7}, {suit: Heart, value: 8, count: 8}, {suit: Heart, value: 9, count: 9}, {suit: Heart, value: 10, count: 0}, {suit: Heart, value: 11, count: 0}, {suit: Heart, value: 12, count: 0}, {suit: Heart, value: 13, count: 0},
+		{suit: Diamond, value: 1, count: 1}, {suit: Diamond, value: 2, count: 2}, {suit: Diamond, value: 3, count: 3}, {suit: Diamond, value: 4, count: 4}, {suit: Diamond, value: 5, count: 5}, {suit: Diamond, value: 6, count: 6}, {suit: Diamond, value: 7, count: 7}, {suit: Diamond, value: 8, count: 8}, {suit: Diamond, value: 9, count: 9}, {suit: Diamond, value: 10, count: 0}, {suit: Diamond, value: 11, count: 0}, {suit: Diamond, value: 12, count: 0}, {suit: Diamond, value: 13, count: 0},
+		{suit: Club, value: 1, count: 1}, {suit: Club, value: 2, count: 2}, {suit: Club, value: 3, count: 3}, {suit: Club, value: 4, count: 4}, {suit: Club, value: 5, count: 5}, {suit: Club, value: 6, count: 6}, {suit: Club, value: 7, count: 7}, {suit: Club, value: 8, count: 8}, {suit: Club, value: 9, count: 9}, {suit: Club, value: 10, count: 0}, {suit: Club, value: 11, count: 0}, {suit: Club, value: 12, count: 0}, {suit: Club, value: 13, count: 0},
+
+		{suit: Spade, value: 1, count: 1}, {suit: Spade, value: 2, count: 2}, {suit: Spade, value: 3, count: 3}, {suit: Spade, value: 4, count: 4}, {suit: Spade, value: 5, count: 5}, {suit: Spade, value: 6, count: 6}, {suit: Spade, value: 7, count: 7}, {suit: Spade, value: 8, count: 8}, {suit: Spade, value: 9, count: 9}, {suit: Spade, value: 10, count: 0}, {suit: Spade, value: 11, count: 0}, {suit: Spade, value: 12, count: 0}, {suit: Spade, value: 13, count: 0},
+		{suit: Heart, value: 1, count: 1}, {suit: Heart, value: 2, count: 2}, {suit: Heart, value: 3, count: 3}, {suit: Heart, value: 4, count: 4}, {suit: Heart, value: 5, count: 5}, {suit: Heart, value: 6, count: 6}, {suit: Heart, value: 7, count: 7}, {suit: Heart, value: 8, count: 8}, {suit: Heart, value: 9, count: 9}, {suit: Heart, value: 10, count: 0}, {suit: Heart, value: 11, count: 0}, {suit: Heart, value: 12, count: 0}, {suit: Heart, value: 13, count: 0},
+		{suit: Diamond, value: 1, count: 1}, {suit: Diamond, value: 2, count: 2}, {suit: Diamond, value: 3, count: 3}, {suit: Diamond, value: 4, count: 4}, {suit: Diamond, value: 5, count: 5}, {suit: Diamond, value: 6, count: 6}, {suit: Diamond, value: 7, count: 7}, {suit: Diamond, value: 8, count: 8}, {suit: Diamond, value: 9, count: 9}, {suit: Diamond, value: 10, count: 0}, {suit: Diamond, value: 11, count: 0}, {suit: Diamond, value: 12, count: 0}, {suit: Diamond, value: 13, count: 0},
+		{suit: Club, value: 1, count: 1}, {suit: Club, value: 2, count: 2}, {suit: Club, value: 3, count: 3}, {suit: Club, value: 4, count: 4}, {suit: Club, value: 5, count: 5}, {suit: Club, value: 6, count: 6}, {suit: Club, value: 7, count: 7}, {suit: Club, value: 8, count: 8}, {suit: Club, value: 9, count: 9}, {suit: Club, value: 10, count: 0}, {suit: Club, value: 11, count: 0}, {suit: Club, value: 12, count: 0}, {suit: Club, value: 13, count: 0},
 	}
 
-	LoadRemainCards()
-	BacResultSingleGame()
+	var bankerResult []Card
+	var playerResult []Card
 
-	fmt.Printf("PlayerPoint %d  %d  %d\n", m_PlayerPoint, m_PlayerCard, len(m_AllCards))
-	fmt.Printf("BankerPoint %d  %d  %d\n", m_BankerPoint, m_BankerCard, len(m_AllCards))
+	afterInitialCardSource, afterInitialBankerResult, afterInitialPlayerResult := initialBothCards(cardSource, bankerResult, playerResult)
 
+	afterFinalPlayerCardSource, finalPlayerResult := finalDealPlayerCard(afterInitialCardSource, afterInitialPlayerResult)
+	finalSourceCard, finalBankerResult := finalDealBankerCard(afterFinalPlayerCardSource, afterInitialBankerResult, finalPlayerResult)
+
+	fmt.Printf("len(finalSourceCard): %d\n", len(finalSourceCard))
+	fmt.Printf("finalBankerResult: %v\n", finalBankerResult)
+	fmt.Printf("finalPlayerResult: %v\n", finalPlayerResult)
 }
